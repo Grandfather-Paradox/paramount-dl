@@ -35,9 +35,9 @@ convert_to_seconds () {
 }
 
 currentEpisode=1
+totalEpisodes=$(wc -l links.txt | sed 's/ links.txt//')
 while read link; do
 	retryDownload=true
-	totalEpisodes=$(wc -l links.txt | sed 's/ links.txt//')
 	while [ $retryDownload = true ]
 	do
 		echo -e "\e[36m[ $currentEpisode / $totalEpisodes ]\e[0m"
