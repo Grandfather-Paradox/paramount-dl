@@ -25,11 +25,11 @@ convert_to_seconds () {
 		mins=0
 		secs=$dur
 	fi
-		
+
 	if [[ -z $hrs ]]; then hrs=0; fi
 	if [[ -z $mins ]]; then mins=0; fi
 	if [[ -z $secs ]]; then secs=0; fi
-	
+
 	totalSecs=$(( $hrs*360 + $mins*60 + $secs ))
 	echo $totalSecs
 }
@@ -41,24 +41,28 @@ while read link; do
 	while [ $retryDownload = true ]
 	do
 		echo -e "\e[36m[ $currentEpisode / $totalEpisodes ]\e[0m"
-		youtube-dl --hls-prefer-native --fragment-retries infinite --retries infinite --sub-lang en --write-sub --convert-subs srt --verbose "$link"
-		
+
 		filename=$(youtube-dl --get-filename "$link")
 		base=$(basename "$filename" .mp4)
 		srt="$base.en.srt"
 		mkv="$base.mkv"
-		
-		if [[ -f "$srt" ]]
+
+		if [[ ! -f "$mkv" ]]
 		then
-			mkvmerge -o "$mkv" "$filename" "$srt"
-			mkvpropedit "$mkv" --edit track:s1 --set language=eng
-			rm "$srt"
-		else
-			mkvmerge -o "$mkv" "$filename"
+			youtube-dl --hls-prefer-native --fragment-retries infinite --retries infinite --sub-lang en --write-sub --convert-subs srt --verbose "$link"
+
+			if [[ -f "$srt" ]]
+			then
+				mkvmerge -o "$mkv" "$filename" "$srt"
+				mkvpropedit "$mkv" --edit track:s1 --set language=eng
+				rm "$srt"
+			else
+				mkvmerge -o "$mkv" "$filename"
+			fi
+			mkvpropedit "$mkv" --edit track:a1 --set language=eng --edit track:v1 --set language=eng
+
+			rm "$filename"
 		fi
-		mkvpropedit "$mkv" --edit track:a1 --set language=eng --edit track:v1 --set language=eng
-		
-		rm "$filename"
 
 		fileDur=$(mediainfo --Inform="Video;%Duration/String3%" "$mkv")
 		streamDur=$(youtube-dl --get-duration "$link")
@@ -66,7 +70,7 @@ while read link; do
 		echo "Total file secs: $totalFileSec"
 		totalStreamSec=$(convert_to_seconds $streamDur)
 		echo "Total stream secs: $totalStreamSec"
-		
+
 		if [[ $totalFileSec -eq $totalStreamSec || $totalFileSec -eq $(( $totalStreamSec-1 )) ]]
 		then
 			echo -e "\e[32mDownload OK\e[0m"
