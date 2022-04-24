@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2021 /u/Grandfather-Paradox
+# Copyright 2022 /u/Grandfather-Paradox
 
 fileDurRegex="([0-9]+):([0-9]+):([0-9]+)\.[0-9]+"
 streamHrsMinsSecsRegex="([0-9]+):([0-9]+):([0-9]+)"
@@ -41,9 +41,9 @@ while read link; do
 	while [ $retryDownload = true ]
 	do
 		echo -e "\e[36m[ $currentEpisode / $totalEpisodes ]\e[0m"
-		youtube-dl --hls-prefer-native --fragment-retries infinite --retries infinite --sub-lang en --write-sub --convert-subs srt --verbose "$link"
+		yt-dlp --hls-prefer-native --fragment-retries infinite --retries infinite --sub-lang en --write-sub --convert-subs srt --verbose "$link"
 		
-		filename=$(youtube-dl --get-filename "$link")
+		filename=$(yt-dlp --get-filename "$link")
 		base=$(basename "$filename" .mp4)
 		srt="$base.en.srt"
 		mkv="$base.mkv"
@@ -61,7 +61,7 @@ while read link; do
 		rm "$filename"
 
 		fileDur=$(mediainfo --Inform="Video;%Duration/String3%" "$mkv")
-		streamDur=$(youtube-dl --get-duration "$link")
+		streamDur=$(yt-dlp --get-duration "$link")
 		totalFileSec=$(convert_to_seconds $fileDur)
 		echo "Total file secs: $totalFileSec"
 		totalStreamSec=$(convert_to_seconds $streamDur)
