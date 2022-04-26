@@ -41,40 +41,47 @@ while read link; do
 	while [ $retryDownload = true ]
 	do
 		echo -e "\e[36m[ $currentEpisode / $totalEpisodes ]\e[0m"
-		yt-dlp --hls-prefer-native --fragment-retries infinite --retries infinite --sub-lang en --write-sub --convert-subs srt --verbose "$link"
 		
 		filename=$(yt-dlp --get-filename "$link")
 		base=$(basename "$filename" .mp4)
 		srt="$base.en.srt"
 		mkv="$base.mkv"
-		
-		if [[ -f "$srt" ]]
+		if [[ ! -f "$mkv" ]]
 		then
-			mkvmerge -o "$mkv" "$filename" "$srt"
-			mkvpropedit "$mkv" --edit track:s1 --set language=eng
-			rm "$srt"
-		else
-			mkvmerge -o "$mkv" "$filename"
-		fi
-		mkvpropedit "$mkv" --edit track:a1 --set language=eng --edit track:v1 --set language=eng
-		
-		rm "$filename"
+			yt-dlp --hls-prefer-native --fragment-retries infinite --retries infinite --sub-lang en --write-sub --convert-subs srt --verbose "$link"
+			
+			if [[ -f "$srt" ]]
+			then
+				mkvmerge -o "$mkv" "$filename" "$srt"
+				mkvpropedit "$mkv" --edit track:s1 --set language=eng
+				rm "$srt"
+			else
+				mkvmerge -o "$mkv" "$filename"
+			fi
+			mkvpropedit "$mkv" --edit track:a1 --set language=eng --edit track:v1 --set language=eng
+			
+			rm "$filename"
 
-		fileDur=$(mediainfo --Inform="Video;%Duration/String3%" "$mkv")
-		streamDur=$(yt-dlp --get-duration "$link")
-		totalFileSec=$(convert_to_seconds $fileDur)
-		echo "Total file secs: $totalFileSec"
-		totalStreamSec=$(convert_to_seconds $streamDur)
-		echo "Total stream secs: $totalStreamSec"
-		
-		if [[ $totalFileSec -eq $totalStreamSec || $totalFileSec -eq $(( $totalStreamSec-1 )) ]]
-		then
-			echo -e "\e[32mDownload OK\e[0m"
+			fileDur=$(mediainfo --Inform="Video;%Duration/String3%" "$mkv")
+			streamDur=$(yt-dlp --get-duration "$link")
+			totalFileSec=$(convert_to_seconds $fileDur)
+			echo "Total file secs: $totalFileSec"
+			totalStreamSec=$(convert_to_seconds $streamDur)
+			echo "Total stream secs: $totalStreamSec"
+			
+			if [[ $totalFileSec -eq $totalStreamSec || $totalFileSec -eq $(( $totalStreamSec-1 )) ]]
+			then
+				echo -e "\e[32mDownload OK\e[0m"
+				retryDownload=false
+				currentEpisode=$(( $currentEpisode+1 ))
+			else
+				echo -e "\e[31mError found, retrying...\e[0m"
+				rm "$mkv"
+			fi
+		else
+			echo -e "\e[32mAlready downloaded\e[0m"
 			retryDownload=false
 			currentEpisode=$(( $currentEpisode+1 ))
-		else
-			echo -e "\e[31mError found, retrying...\e[0m"
-			rm "$mkv"
 		fi
 	done
 done <links.txt
