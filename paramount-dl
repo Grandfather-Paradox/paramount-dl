@@ -2,6 +2,11 @@
 
 # Copyright 2022 /u/Grandfather-Paradox
 
+#Set the number of retries if the download fails
+retries=2
+#Set where the downloads will go
+downloadpath="~/"
+
 fileDurRegex="([0-9]+):([0-9]+):([0-9]+)\.[0-9]+"
 streamHrsMinsSecsRegex="([0-9]+):([0-9]+):([0-9]+)"
 streamMinsSecsRegex="([0-9]+):([0-9]+)"
@@ -25,11 +30,11 @@ convert_to_seconds () {
 		mins=0
 		secs=$dur
 	fi
-		
+
 	if [[ -z $hrs ]]; then hrs=0; fi
 	if [[ -z $mins ]]; then mins=0; fi
 	if [[ -z $secs ]]; then secs=0; fi
-	
+
 	totalSecs=$(( $hrs*360 + $mins*60 + $secs ))
 	echo $totalSecs
 }
@@ -40,48 +45,30 @@ while read link; do
 	retryDownload=true
 	while [ $retryDownload = true ]
 	do
+		#Reset the retries count
+		if [ $c -eq $retries ]; then c=0; fi
 		echo -e "\e[36m[ $currentEpisode / $totalEpisodes ]\e[0m"
-		
-		filename=$(yt-dlp --get-filename "$link")
-		base=$(basename "$filename" .mp4)
-		srt="$base.en.srt"
-		mkv="$base.mkv"
-		if [[ ! -f "$mkv" ]]
-		then
-			yt-dlp --hls-prefer-native --fragment-retries infinite --retries infinite --sub-lang en --write-sub --convert-subs srt --verbose "$link"
-			
-			if [[ -f "$srt" ]]
-			then
-				mkvmerge -o "$mkv" "$filename" "$srt"
-				mkvpropedit "$mkv" --edit track:s1 --set language=eng
-				rm "$srt"
-			else
-				mkvmerge -o "$mkv" "$filename"
-			fi
-			mkvpropedit "$mkv" --edit track:a1 --set language=eng --edit track:v1 --set language=eng
-			
-			rm "$filename"
+		yt-dlp --embed-subs --embed-metadata --no-mtime --verbose -P $downloadpath/ --external-downloader aria2c "$link"
 
-			fileDur=$(mediainfo --Inform="Video;%Duration/String3%" "$mkv")
-			streamDur=$(yt-dlp --get-duration "$link")
-			totalFileSec=$(convert_to_seconds $fileDur)
-			echo "Total file secs: $totalFileSec"
-			totalStreamSec=$(convert_to_seconds $streamDur)
-			echo "Total stream secs: $totalStreamSec"
-			
-			if [[ $totalFileSec -eq $totalStreamSec || $totalFileSec -eq $(( $totalStreamSec-1 )) ]]
-			then
-				echo -e "\e[32mDownload OK\e[0m"
-				retryDownload=false
-				currentEpisode=$(( $currentEpisode+1 ))
-			else
-				echo -e "\e[31mError found, retrying...\e[0m"
-				rm "$mkv"
-			fi
-		else
-			echo -e "\e[32mAlready downloaded\e[0m"
+		filename=$(yt-dlp --get-filename "$link")
+
+		fileDur=$(mediainfo --Inform="Video;%Duration/String3%" "$downloadpath/$filename")
+		streamDur=$(yt-dlp --get-duration "$link")
+		totalFileSec=$(convert_to_seconds $fileDur)
+		echo "Total file secs: $totalFileSec"
+		totalStreamSec=$(convert_to_seconds $streamDur)
+		echo "Total stream secs: $totalStreamSec"
+
+		if [[ $totalFileSec -eq $totalStreamSec || $totalFileSec -eq $(( $totalStreamSec-1 )) ]]
+		then
+			echo -e "\e[32mDownload OK\e[0m"
 			retryDownload=false
 			currentEpisode=$(( $currentEpisode+1 ))
+		else
+			echo -e "\e[31mError found, retrying...\e[0m"
+			rm "$downloadpath/$filename"
+			#Sets the number of retries
+			((c++)) && ((c==$retries)) && echo $link >> broken.txt && break
 		fi
 	done
 done <links.txt
