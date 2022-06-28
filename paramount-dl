@@ -2,6 +2,9 @@
 
 # Copyright 2022 /u/Grandfather-Paradox
 
+#Set the number of retries if the download fails
+retries=5
+
 fileDurRegex="([0-9]+):([0-9]+):([0-9]+)\.[0-9]+"
 streamHrsMinsSecsRegex="([0-9]+):([0-9]+):([0-9]+)"
 streamMinsSecsRegex="([0-9]+):([0-9]+)"
@@ -25,11 +28,11 @@ convert_to_seconds () {
 		mins=0
 		secs=$dur
 	fi
-		
+
 	if [[ -z $hrs ]]; then hrs=0; fi
 	if [[ -z $mins ]]; then mins=0; fi
 	if [[ -z $secs ]]; then secs=0; fi
-	
+
 	totalSecs=$(( $hrs*360 + $mins*60 + $secs ))
 	echo $totalSecs
 }
@@ -40,48 +43,67 @@ while read link; do
 	retryDownload=true
 	while [ $retryDownload = true ]
 	do
-		echo -e "\e[36m[ $currentEpisode / $totalEpisodes ]\e[0m"
-		
-		filename=$(yt-dlp --get-filename "$link")
-		base=$(basename "$filename" .mp4)
-		srt="$base.en.srt"
-		mkv="$base.mkv"
-		if [[ ! -f "$mkv" ]]
-		then
-			yt-dlp --hls-prefer-native --fragment-retries infinite --retries infinite --sub-lang en --write-sub --convert-subs srt --verbose "$link"
-			
-			if [[ -f "$srt" ]]
-			then
-				mkvmerge -o "$mkv" "$filename" "$srt"
-				mkvpropedit "$mkv" --edit track:s1 --set language=eng
-				rm "$srt"
-			else
-				mkvmerge -o "$mkv" "$filename"
-			fi
-			mkvpropedit "$mkv" --edit track:a1 --set language=eng --edit track:v1 --set language=eng
-			
-			rm "$filename"
+		#Reset the retries count
+		if [ $c -eq $retries ]; then c=0; fi
 
-			fileDur=$(mediainfo --Inform="Video;%Duration/String3%" "$mkv")
-			streamDur=$(yt-dlp --get-duration "$link")
-			totalFileSec=$(convert_to_seconds $fileDur)
-			echo "Total file secs: $totalFileSec"
-			totalStreamSec=$(convert_to_seconds $streamDur)
-			echo "Total stream secs: $totalStreamSec"
-			
-			if [[ $totalFileSec -eq $totalStreamSec || $totalFileSec -eq $(( $totalStreamSec-1 )) ]]
-			then
-				echo -e "\e[32mDownload OK\e[0m"
-				retryDownload=false
-				currentEpisode=$(( $currentEpisode+1 ))
-			else
-				echo -e "\e[31mError found, retrying...\e[0m"
-				rm "$mkv"
-			fi
-		else
-			echo -e "\e[32mAlready downloaded\e[0m"
+		echo -e "\e[36m[ $currentEpisode / $totalEpisodes ]\e[0m"
+
+                filename=$(yt-dlp -o "%(series)s/Season %(season_number)s/Episode %(episode_number)s.%(ext)s" --get-filename "$link")
+
+		if [ -f "$filename" ]; then
+			echo "Download $filename already exists, skipping download"
+
 			retryDownload=false
+                        currentEpisode=$(( $currentEpisode+1 ))
+
+			continue
+                fi
+
+		filename2=$(yt-dlp -o "%(series)s/Season %(season_number)s/Episode %(episode_number)s.%(ext)s" --get-filename "$link")
+
+		echo "Download 1"
+		echo ""
+		yt-dlp --hls-prefer-native --sub-langs all --write-sub --convert-subs srt --embed-metadata --no-mtime --concat-playlist always --verbose -o "%(series)s/Season %(season_number)s/Episode %(episode_number)s.%(ext)s" --no-skip-unavailable-fragments --external-downloader aria2c "$link"
+		echo "Download 2"
+		echo ""
+		yt-dlp --hls-prefer-native --embed-metadata --no-mtime --concat-playlist always --verbose -o "%(series)s/Season %(season_number)s/Episode %(episode_number)s.%(ext)s" --no-skip-unavailable-fragments --external-downloader aria2c "$link"
+
+		filename=$(yt-dlp -o "%(series)s/Season %(season_number)s/Episode %(episode_number)s.%(ext)s" --get-filename "$link")
+		filename2=$(yt-dlp -o "%(series)s/Season %(season_number)s/Episode %(episode_number)s.extratry.%(ext)s" --get-filename "$link")
+
+		echo ""
+		echo "$filename"
+		echo "$filename2"
+		echo ""
+
+		file1Dur=$(mediainfo --Inform="Video;%Duration/String3%" "$filename")
+		file2Dur=$(mediainfo --Inform="Video;%Duration/String3%" "$filename2")
+
+		file1SHA=$(sha1sum "$filename" | cut -d " " -f 1)
+		file2SHA=$(sha1sum "$filename2" | cut -d " " -f 1)
+
+		totalFile1Sec=$(convert_to_seconds $file1Dur)
+		totalFile2Sec=$(convert_to_seconds $file2Dur)
+
+		echo "Download 1 secs: $file1Dur"
+		echo "Download 2 secs: $file2Dur"
+		echo ""
+		echo "Download 1 SHA: $file1SHA"
+                echo "Download 2 SHA: $file2SHA"
+
+		if [[ $file1SHA = $file2SHA ]]
+		then
+			echo -e "\e[32mDownload OK\e[0m"
+			retryDownload=false
+			echo "removing extratry file"
+			rm "$filename2"
 			currentEpisode=$(( $currentEpisode+1 ))
+		else
+			echo -e "\e[31mError found, retrying...\e[0m"
+			rm "$filename"
+			rm "$filename2"
+			#Sets the number of retries
+			((c++)) && ((c==$retries)) && echo $link >> broken.txt && break
 		fi
 	done
 done <links.txt
