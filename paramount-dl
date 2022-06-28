@@ -68,8 +68,6 @@ while read link; do
 		echo ""
 		yt-dlp --hls-prefer-native --embed-metadata --no-mtime --concat-playlist always --verbose -o "%(series)s/Season %(season_number)s/Episode %(episode_number)s.%(ext)s" --no-skip-unavailable-fragments --external-downloader aria2c "$link"
 
-		filename=$(yt-dlp -o "%(series)s/Season %(season_number)s/Episode %(episode_number)s.%(ext)s" --get-filename "$link")
-		filename2=$(yt-dlp -o "%(series)s/Season %(season_number)s/Episode %(episode_number)s.extratry.%(ext)s" --get-filename "$link")
 
 		echo ""
 		echo "$filename"
